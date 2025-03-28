@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { sendOTPEmail } from "../utils/otp.js";
+import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
 
 // cookie option if needed
@@ -163,6 +164,7 @@ const resendOTP = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${3 - user.otpResendAttempts} attempts left.`));
 });
 
+// login the user
 const loginUser = asyncHandler ( async (req , res) => {
     // get the user credentials
     const {email, password} = req.body;
@@ -203,6 +205,7 @@ const loginUser = asyncHandler ( async (req , res) => {
         "User logged in successfully"));
 })
 
+// logout the user
 const logoutUser = asyncHandler (async (req, res) => {
     await User.findByIdAndUpdate(
         req.user._id,
@@ -227,6 +230,7 @@ const logoutUser = asyncHandler (async (req, res) => {
     )
 })
 
+// refresh the expired accesstoken
 const refreshAccessToken = asyncHandler ( async (req, res) => {
     const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
     if (!incomingRefreshToken) {
@@ -264,20 +268,126 @@ const refreshAccessToken = asyncHandler ( async (req, res) => {
         throw new ApiError(500,error?.message || "Failed to refresh access token. Please try again.");
     }
 })
-// const uploadAvatar = asyncHandler(async (req, res) => {
-//      const avatarLocalPath = req.files?.avatar[0]?.path
-//      if (!avatarLocalPath) {
-//          throw new ApiError(400, "Avatar file is required");
-//      }
- 
-//      // upload them to cloudinary server
-//      const avatar = await uploadOnCloudinary(avatarLocalPath);
-//      if (!avatar){
-//          throw new ApiError(500, "Failed to upload avatar to cloudinary");
-//      }
 
-//      return res.status(200).json(new ApiResponse(200, avatar, "Avatar uploaded Successfully"));
-// })
+// change the current password of the user
+const changePassword = asyncHandler( async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+
+    // check if the current password is correct
+    const user = await User.findById( req.user?._id);
+    const isPassValid = await user.isPasswordCorrect( currentPassword ); 
+
+    if (!isPassValid) {
+        throw new ApiError(401, "Invalid current password");
+    }
+
+    // update the user's password
+    user.password = newPassword;
+    await user.save({validateBeforeSave: false});
+
+    return res.status(200).json(new ApiResponse(200, null, "Password changed successfully"));
+})
+
+// get current user
+const getCurrentUser = asyncHandler( async (req, res) => {
+    return res.status(200)
+    .json(
+        new ApiResponse(
+            200,
+            req.user,
+            "User information retrieved successfully"
+        )
+    )
+})
+
+// change your avatar
+const updateUserAvatar = asyncHandler(async (req, res) => {
+    const user = req.user;
+
+    if (!user){
+        throw new ApiError(401, "User not authenticated");
+    }
+
+    const avatarLocalPath = req.files?.path
+    
+    if (!avatarLocalPath) {
+        throw new ApiError(400, "Avatar file is required");
+    }
+
+    // upload them to cloudinary server
+    const avatar = await uploadOnCloudinary(avatarLocalPath);
+    if (!avatar.url){
+        throw new ApiError(500, "Failed to upload avatar to cloudinary");
+    }
+
+    // update the user's avatar
+    user.avatar = avatar.url;
+    await user.save({validateBeforeSave: false});
+
+    return res.status(200).json(new ApiResponse(200, null, "Avatar uploaded Successfully"));
+})
+
+// reset the password if user forget their password
+const sendResetOTP = asyncHandler( async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        throw new ApiError(400, "Email is required");
+    }
+
+    // send the otp to the email
+    const resetOTP = generateOTP();
+    const otpExpiresAt = new Date(Date.now() + process.env.OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    // update the user's otp and otp expiry
+    const user = await User.findOneAndUpdate(
+        { email },
+        {
+            $set: {
+                otp: { code: resetOTP, expiredAt: otpExpiresAt }
+            }
+        },
+        { new: true }
+    );
+
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    // send the otp to the user's email
+    // const otpSent = await sendOTPEmail(email, resetOTP);
+    // if (!otpSent) {
+    //     throw new ApiError(500, "Failed to send OTP. Try again later.");
+    // }
+
+    return res.status(200).json(new ApiResponse(200, null, "Reset OTP sent successfully"));
+
+})
+
+// reset the password if user confirm their otp
+const resetPassword = asyncHandler( async( req, res) => {
+    const { email, password, otp } = req.body;
+    if (!email ||!password ||!otp) {
+        throw new ApiError(400, "All credentials are required");
+    }
+
+    // check if user exists and otp is valid
+    const user = await User.findOne({email});
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    const isOtpValid = user.otp?.code === otp && user.otp?.expiredAt > new Date();
+    if (!isOtpValid) {
+        throw new ApiError(401, "Invalid OTP or OTP expired");
+    }
+
+    // update the user's password and set otp code and expiry to null
+    user.otp = { code: null, expiredAt: null };
+    user.password =  password;
+    await user.save({validateBeforeSave: false});
+
+    return res.status(200).json(new ApiResponse(200, null, "Password reset successfully"));
+})
 
 export { 
     registerUser, 
@@ -286,4 +396,9 @@ export {
     loginUser,
     logoutUser,
     refreshAccessToken,
+    changePassword,
+    getCurrentUser,
+    updateUserAvatar,
+    sendResetOTP,
+    resetPassword
 };
