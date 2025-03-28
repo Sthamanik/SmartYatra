@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { registerUser, resendOTP, verifyOTP } from "../controllers/user.controller.js";
+import { loginUser, logoutUser, registerUser, resendOTP, verifyOTP } from "../controllers/user.controller.js";
 import {upload} from "../middlewares/multer.middleware.js"
+import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 
@@ -16,6 +17,8 @@ const router = Router();
 
 router.route('/register').post(registerUser);
 router.route('/verifyOTP').post(verifyOTP);
-router.route('/resendOTP').post(resendOTP)
+router.route('/resendOTP').post(resendOTP);
+router.route('/login').post(loginUser);
+router.route('/logout').post(verifyJWT, logoutUser);
 
 export default router;

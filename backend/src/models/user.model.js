@@ -34,7 +34,8 @@ const UserSchema = new Schema({
         required: true
     },
     avatar: {
-        type: String
+        type: String,
+        default: ""
     },
     role: {
         type: String,
@@ -59,6 +60,10 @@ const UserSchema = new Schema({
                 message: "Invalid location coordinates"
             }
         }
+    },
+    refreshToken: {
+        type: String,
+        default: null
     },
     otp: {
         code: { type: String, match: [/^\d{6}$/, "OTP must be a 6-digit number"], default: null },

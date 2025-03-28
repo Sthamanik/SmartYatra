@@ -4,11 +4,34 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { sendOTPEmail } from "../utils/otp.js";
 
+// cookie option if needed
+const options = {
+    httpOnly: true,
+    secure: true,
+}
+
 const generateOTP = () => {
     // Generate a random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000);  
     return otp.toString(); 
 };
+
+const generateAccessAndRefreshTokens = async (userId) => {
+    try {
+        const user = await User.findById(userId);
+        const accessToken = user.generateAccessToken();
+        const refreshToken = user.generateRefreshToken();
+
+        user.refreshToken = refreshToken;
+
+        await user.save({validateBeforeSave: false})
+
+        return {accessToken, refreshToken};
+
+    } catch (error) {
+        throw new ApiError(500, "Error generating access and refresh token")
+    }
+}
 
 // ✅ Register User with OTP Verification
 const registerUser = asyncHandler(async (req, res) => {
@@ -53,7 +76,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // }
 
     // Return response without sensitive data
-    const createdUser = await User.findById(user._id).select("-password -avatar -walletBalance -currentLocation -otp -otpAttempts -otpResendAttempts");
+    const createdUser = await User.findById(user._id).select("-password -otp -otpAttempts -otpResendAttempts");
     return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully. Verify OTP to complete registration."));
 });
 
@@ -139,6 +162,70 @@ const resendOTP = asyncHandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${4 - user.otpResendAttempts} attempts left.`));
 });
 
+const loginUser = asyncHandler ( async (req , res) => {
+    // get the user credentials
+    const {email, password} = req.body;
+
+    if (!email ||!password) {
+        throw new ApiError(400, "All credentials are required");
+    }
+
+    // check if user exists or not
+    const user = await User.findOne({email});
+    if (!user) {
+        throw new ApiError(404, "User not found");
+    }
+
+    // if user exists, validate password
+    const isPassValid = await user.isPasswordCorrect ( password );
+
+    if (!isPassValid) {
+        throw new ApiError(401, "Invalid user credentials");
+    }
+
+    // if validated, generate access and refreshh tokens
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id);
+
+    const loggedinUser = await User.findById(user._id).select("-password -otp -otpAttempts -otpResendAttempts");
+
+    // store the token in secured cookies and return the response
+    return res.status(200)
+    .cookie( "accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(new ApiResponse(
+        200,
+        {
+            user: loggedinUser,
+            accessToken,
+            refreshToken
+        },
+        "User logged in successfully"));
+})
+
+const logoutUser = asyncHandler (async (req, res) => {
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set: {
+                refreshToken: null
+            }
+        },
+        { new: true }
+    )
+
+    // clear access and refresh tokens from cookies and send response
+    return res.status(200)
+    .clearCookie("accessToken", options)
+    .clearCookie("refreshToken", options)
+    .json (
+        new ApiResponse(
+            200,
+            null,
+            "User logged out successfully"
+        )
+    )
+})
+
 // const uploadAvatar = asyncHandler(async (req, res) => {
 //      const avatarLocalPath = req.files?.avatar[0]?.path
 //      if (!avatarLocalPath) {
@@ -157,5 +244,7 @@ const resendOTP = asyncHandler(async (req, res) => {
 export { 
     registerUser, 
     verifyOTP, 
-    resendOTP 
+    resendOTP,
+    loginUser,
+    logoutUser
 };
