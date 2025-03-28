@@ -65,17 +65,17 @@ const registerUser = asyncHandler(async (req, res) => {
     });
 
     // Send OTP via email
-    // try {
-    //     const otpSent = await sendOTPEmail(email, otpCode);
-    //     if (!otpSent) {
-    //         await User.deleteOne({ _id: user._id }); // Remove user if OTP fails
-    //         throw new ApiError(500, "Failed to send OTP. Please try again.");
-    //     }
-    // } catch (error) {
-    //     console.error("Error sending OTP email:", error);
-    //     await User.deleteOne({ _id: user._id });  // Remove user if error occurs while sending OTP
-    //     throw new ApiError(500, "Failed to send OTP. Please try again.");
-    // }
+    try {
+        const otpSent = await sendOTPEmail(email, otpCode);
+        if (!otpSent) {
+            await User.deleteOne({ _id: user._id }); // Remove user if OTP fails
+            throw new ApiError(500, "Failed to send OTP. Please try again.");
+        }
+    } catch (error) {
+        console.error("Error sending OTP email:", error);
+        await User.deleteOne({ _id: user._id });  // Remove user if error occurs while sending OTP
+        throw new ApiError(500, "Failed to send OTP. Please try again.");
+    }
 
     // Return response without sensitive data
     const createdUser = await User.findById(user._id).select("-password -otp -otpAttempts -otpResendAttempts");
@@ -156,10 +156,10 @@ const resendOTP = asyncHandler(async (req, res) => {
     await user.save({validateBeforeSave: false});
 
     // Send new OTP
-    // const otpSent = await sendOTPEmail(phone, newOtp);
-    // if (!otpSent) {
-    //     throw new ApiError(500, "Failed to send OTP. Try again later.");
-    // }
+    const otpSent = await sendOTPEmail(email, newOtp);
+    if (!otpSent) {
+        throw new ApiError(500, "Failed to send OTP. Try again later.");
+    }
 
     return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${3 - user.otpResendAttempts} attempts left.`));
 });
@@ -354,10 +354,10 @@ const sendResetOTP = asyncHandler( async (req, res) => {
     }
 
     // send the otp to the user's email
-    // const otpSent = await sendOTPEmail(email, resetOTP);
-    // if (!otpSent) {
-    //     throw new ApiError(500, "Failed to send OTP. Try again later.");
-    // }
+    const otpSent = await sendOTPEmail(email, resetOTP);
+    if (!otpSent) {
+        throw new ApiError(500, "Failed to send OTP. Try again later.");
+    }
 
     return res.status(200).json(new ApiResponse(200, null, "Reset OTP sent successfully"));
 
@@ -389,6 +389,37 @@ const resetPassword = asyncHandler( async( req, res) => {
     return res.status(200).json(new ApiResponse(200, null, "Password reset successfully"));
 })
 
+const getCurrentLocation = asyncHandler(async (req, res) => {
+    const { latitude, longitude } = req.body;
+    
+    if (!latitude || !longitude) {
+        throw new ApiError(400, "Latitude and longitude are required");
+    }
+
+    // Assuming user is authenticated and their ID is in req.user
+    const userId = req.user._id;
+    
+    if( !userId ){
+        throw new ApiError(401, "User not authenticated");
+    }
+
+    // Update user location in MongoDB
+    const user = await User.findByIdAndUpdate(userId, {
+        $set: { 
+            currentLocation: { 
+                type: "Point", 
+                coordinates: [longitude, latitude] 
+            }
+        }
+    },{new : true});
+
+    if(!user){
+        throw new ApiError(404, "User not found");
+    }
+
+    return res.status(200).json(new ApiResponse(200, null, "Location updated successfully"));
+});
+
 export { 
     registerUser, 
     verifyOTP, 
@@ -400,5 +431,6 @@ export {
     getCurrentUser,
     updateUserAvatar,
     sendResetOTP,
-    resetPassword
+    resetPassword,
+    getCurrentLocation
 };
