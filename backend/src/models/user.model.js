@@ -71,7 +71,7 @@ const UserSchema = new Schema({
         verified: { type: Boolean, default: false }
     },
     otpAttempts: { type: Number, default: 0, min: 0, max: 5 }, // Failed OTP attempts for verification
-    otpResendAttempts: { type: Number, default: 0, min:0, max:4 }, // Number of times OTP was resent
+    otpResendAttempts: { type: Number, default: 0, min:0, max:3 }, // Number of times OTP was resent
     isVerified: { type: Boolean, default: false } // Marks user as verified
 
 }, { timestamps: true });

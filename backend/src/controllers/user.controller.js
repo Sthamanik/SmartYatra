@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { sendOTPEmail } from "../utils/otp.js";
+import jwt from "jsonwebtoken";
 
 // cookie option if needed
 const options = {
@@ -142,7 +143,7 @@ const resendOTP = asyncHandler(async (req, res) => {
     }
 
     if (user.otpResendAttempts >= 3) {
-        await User.deleteOne({ phone });
+        await User.deleteOne({ email });
         throw new ApiError(400, "Too many OTP requests. Please register again.");
     }
 
@@ -151,7 +152,7 @@ const resendOTP = asyncHandler(async (req, res) => {
     user.otp.code = newOtp;
     user.otp.expiredAt = new Date(Date.now() + process.env.OTP_EXPIRY_MINUTES * 60 * 1000);
     user.otpResendAttempts += 1;
-    await user.save();
+    await user.save({validateBeforeSave: false});
 
     // Send new OTP
     // const otpSent = await sendOTPEmail(phone, newOtp);
@@ -159,7 +160,7 @@ const resendOTP = asyncHandler(async (req, res) => {
     //     throw new ApiError(500, "Failed to send OTP. Try again later.");
     // }
 
-    return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${4 - user.otpResendAttempts} attempts left.`));
+    return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${3 - user.otpResendAttempts} attempts left.`));
 });
 
 const loginUser = asyncHandler ( async (req , res) => {
@@ -226,6 +227,43 @@ const logoutUser = asyncHandler (async (req, res) => {
     )
 })
 
+const refreshAccessToken = asyncHandler ( async (req, res) => {
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+    if (!incomingRefreshToken) {
+        throw new ApiError(401, "Refresh token is required");
+    }
+
+    try {
+        // validate the refresh token
+        const decodedToken = jwt.verify( incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+    
+        // check if the user still exists and the refresh token hasn't expired
+        const user = await User.findById(decodedToken._id);
+        if (!user || user?.refreshToken!== incomingRefreshToken) {
+            throw new ApiError(401, "Invalid refresh token");
+        }
+    
+        // generate new access token
+        const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id);
+        
+        return res.status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json( 
+            new ApiResponse(
+                200,
+                {
+                    accessToken,
+                    refreshToken: newRefreshToken
+                },
+                "Access token refreshed successfully"
+            )
+        )
+    } catch (error) {
+        console.error("Error refreshing access token:", error);
+        throw new ApiError(500,error?.message || "Failed to refresh access token. Please try again.");
+    }
+})
 // const uploadAvatar = asyncHandler(async (req, res) => {
 //      const avatarLocalPath = req.files?.avatar[0]?.path
 //      if (!avatarLocalPath) {
@@ -246,5 +284,6 @@ export {
     verifyOTP, 
     resendOTP,
     loginUser,
-    logoutUser
+    logoutUser,
+    refreshAccessToken,
 };
