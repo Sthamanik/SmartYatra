@@ -11,10 +11,10 @@ const BusSchema = new Schema({
         ref: "Route",
         required: true
     },
-    driver: {
+    assignedDriver: {
         type: Schema.Types.ObjectId,
         ref: "Driver",
-        required: true
+        default: null
     },
     capacity: {
         type: Number,

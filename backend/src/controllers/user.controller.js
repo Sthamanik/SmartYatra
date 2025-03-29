@@ -65,17 +65,10 @@ const registerUser = asyncHandler(async (req, res) => {
     });
 
     // Send OTP via email
-    try {
-        const otpSent = await sendOTPEmail(email, otpCode);
-        if (!otpSent) {
-            await User.deleteOne({ _id: user._id }); // Remove user if OTP fails
-            throw new ApiError(500, "Failed to send OTP. Please try again.");
-        }
-    } catch (error) {
-        console.error("Error sending OTP email:", error);
-        await User.deleteOne({ _id: user._id });  // Remove user if error occurs while sending OTP
-        throw new ApiError(500, "Failed to send OTP. Please try again.");
-    }
+    const otpSent = await sendOTPEmail(email, otpCode);
+    if (!otpSent) {
+        throw new ApiError(500, "Failed to send OTP. Try again later.");
+    } 
 
     // Return response without sensitive data
     const createdUser = await User.findById(user._id).select("-password -otp -otpAttempts -otpResendAttempts");
@@ -177,6 +170,10 @@ const loginUser = asyncHandler ( async (req , res) => {
     const user = await User.findOne({email});
     if (!user) {
         throw new ApiError(404, "User not found");
+    }
+
+    if (!user?.isVerified){
+        throw new ApiError(400, "User is not verified. Verify your email first.");
     }
 
     // if user exists, validate password

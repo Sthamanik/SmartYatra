@@ -1,9 +1,9 @@
 import mongoose,{Schema} from "mongoose";
 
 const DriverSchema = new Schema({
-    id: {
+    userId: {
         type: Schema.Types.ObjectId,
-        ref: "user",
+        ref: "User",
         required: true,
         unique: true,
     },
@@ -17,7 +17,7 @@ const DriverSchema = new Schema({
         required: true,
         min: 0
     },
-    assigned_bus: {
+    assignedBus: {
         type: Schema.Types.ObjectId,
         ref: "Bus",
         default: null
