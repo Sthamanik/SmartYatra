@@ -1,20 +1,32 @@
 import cron from "node-cron";
 import { User } from "../models/user.model.js";
 
-const scheduleUserCleanupBasedOnDeleteConfirmation = () => {
+const scheduleUserCleanupJobs = () => {
+    // Run every day at midnight – delete users with deleteConfirmation = true
     cron.schedule("0 0 * * *", async () => {
         try {
-            const deletedUsers = await User.cleanUpDeleteConfirmatinUsers();
-            logger.info(`User cleanup job executed. Deleted users: ${deletedUsers.deletedCount}`);
+            await User.cleanUpDeleteConfirmatinUsers();
         } catch (error) {
-            logger.error("Error during user cleanup:", error);
+            console.error("❌ Error during delete-confirmation cleanup:", error);
         }
     }, {
         scheduled: true,
-        timezone: "Asia/Kathmandu" // Set the timezone if needed
+        timezone: "Asia/Kathmandu"
+    });
+
+    // Run every 5 minutes – delete unverified users with too many attempts or old accounts
+    cron.schedule("*/5 * * * *", async () => {
+        try {
+            await User.cleanupUnverifiedUsers();
+        } catch (error) {
+            console.error("❌ Error during unverified user cleanup:", error);
+        }
+    }, {
+        scheduled: true,
+        timezone: "Asia/Kathmandu"
     });
 };
 
 export {
-    scheduleUserCleanupBasedOnDeleteConfirmation
-}
+    scheduleUserCleanupJobs
+};

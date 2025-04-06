@@ -83,6 +83,12 @@ const UserSchema = new Schema({
 
 UserSchema.index({ currentLocation: "2dsphere" });
 
+UserSchema.pre("remove", async function (next) {
+    // Delete the associated driver when the user is removed
+    await mongoose.model("Driver").deleteOne({ userId: this._id });
+    next();
+});
+
 UserSchema.pre("save", async function (next) {
     if (!this.isModified("password")) return next();
     this.password = await bcrypt.hash(this.password, 12);
@@ -116,12 +122,20 @@ UserSchema.methods.generateRefreshToken = function () {
 
 // Auto-delete unverified users exceeding retry limit
 UserSchema.statics.cleanupUnverifiedUsers = async function () {
-    await this.deleteMany({ isVerified: false, otpAttempts: { $gte: 5 } });
-    await this.deleteMany({ isVerified: false, otpResendAttempts: { $gte: 4 } });
-};
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  
+    await this.deleteMany({
+      isVerified: false,
+      $or: [
+        { otpAttempts: { $gte: 5 } },
+        { otpResendAttempts: { $gte: 4 } },
+        { createdAt: { $lte: oneHourAgo } }
+      ]
+    }).lean();
+  };
 
 UserSchema.statics.cleanUpDeleteConfirmatinUsers = async function() {
-    await this.deleteMany({ deleteConfirmation: true });
+    await this.deleteMany({ deleteConfirmation: true }).lean();
 }
 
 export const User = mongoose.model("User", UserSchema);

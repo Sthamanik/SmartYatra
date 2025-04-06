@@ -158,6 +158,7 @@ const resendOTP = asyncHandler(async (req, res) => {
 
 // login the user
 const loginUser = asyncHandler ( async (req , res) => {
+    console.log("entered backend for logging in")
     // get the user credentials
     const {email, password} = req.body;
 

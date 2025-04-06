@@ -1,7 +1,8 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import { scheduleUserCleanupBasedOnDeleteConfirmation } from "./utils/cronJobs.js";
+import { scheduleUserCleanupJobs } from "./utils/cronJobs.js";
+import errorHandler from "./middlewares/errorHandler.js";
 
 const app = express();
 
@@ -25,6 +26,8 @@ app.use("/api/v1/users", userRouter)
 app.use('/api/v1/driver', driverRouter)
 
 // cron jobs
-scheduleUserCleanupBasedOnDeleteConfirmation();
+scheduleUserCleanupJobs();
+
+app.use(errorHandler);
 
 export {app}
