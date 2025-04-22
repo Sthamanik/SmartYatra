@@ -69,9 +69,16 @@ const registerUser = asyncHandler(async (req, res) => {
     //     throw new ApiError(500, "Failed to send OTP. Try again later.");
     // } 
 
-    // Return response without sensitive data
-    const createdUser = await User.findById(user._id).select("-password -otp -otpAttempts -otpResendAttempts");
-    return res.status(201).json(new ApiResponse(201, createdUser, "User registered successfully. Verify OTP to complete registration."));
+    // Return response without sensitive data but include OTP expiry time
+    const createdUser = await User.findById(user._id).select("-password -otp.code -otpAttempts -otpResendAttempts");
+    return res.status(201).json(new ApiResponse(
+        201, 
+        { 
+            user: createdUser,
+            otpExpiry: otpExpiresAt
+        }, 
+        "User registered successfully. Verify OTP to complete registration."
+    ));
 });
 
 // Verify OTP
@@ -152,7 +159,15 @@ const resendOTP = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Failed to send OTP. Try again later.");
     }
 
-    return res.status(200).json(new ApiResponse(200, null, `New OTP sent. ${3 - user.otpResendAttempts} attempts left.`));
+    // Return response with OTP expiry time but not the OTP code
+    return res.status(200).json(new ApiResponse(
+        200, 
+        { 
+            otpExpiry: user.otp.expiredAt,
+            resendAttemptsLeft: 3 - user.otpResendAttempts
+        }, 
+        `New OTP sent. ${3 - user.otpResendAttempts} attempts left.`
+    ));
 });
 
 // login the user
@@ -169,17 +184,18 @@ const loginUser = asyncHandler ( async (req , res) => {
     if (!user) {
         throw new ApiError(404, "User not found");
     }
-
-    if (!user?.isVerified){
-        throw new ApiError(400, "User is not verified. Verify your email first.");
-    }
-
+    
     // if user exists, validate password
     const isPassValid = await user.isPasswordCorrect ( password );
 
     if (!isPassValid) {
         throw new ApiError(401, "Invalid user credentials");
     }
+
+    if (!user?.isVerified){
+        throw new ApiError(400, "User is not verified. Verify your email first.");
+    }
+
 
     // if validated, generate access and refreshh tokens
     const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id);
@@ -443,7 +459,7 @@ const sendDeleteVerification = asyncHandler ( async (req, res) => {
 
     user.deleteConfirmation = true;
     await user.save({validateBeforeSave: false});
-
+    return res.status(200).json(new ApiResponse(200, null, "Delete verification sent successfully"));
 
 })
 

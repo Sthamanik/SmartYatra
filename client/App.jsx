@@ -1,20 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { store } from './src/redux/store'
+import { Provider, useSelector } from 'react-redux';
 
 import LoadingScreen from './src/screens/LoadingScreen';
-import LoginScreen from './src/screens/LoginScreen';
-import SignupScreen from './src/screens/SignupScreen';
-import OtpScreen from './src/screens/OtpScreen';
+import AuthNavigator from './src/navigation/AuthNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
 
 import './global.css';
-import { Provider } from 'react-redux';
 
-const Stack = createNativeStackNavigator();
-
-const App = () => {
+const AppContent = () => {
   const [isAppReady, setIsAppReady] = useState(false);
+  const isAuthenticated = useSelector((state) => state.auth.isAuthenticated);
 
   useEffect(() => {
     // Simulate initialization process
@@ -24,21 +21,21 @@ const App = () => {
     return () => clearTimeout(timer);
   }, []);
 
+  if (!isAppReady) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <Provider store = {store}>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {!isAppReady ? (
-            <Stack.Screen name="Loading" component={LoadingScreen} />
-          ) : (
-            <>
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Signup" component={SignupScreen} />
-              <Stack.Screen name="Otp" component={OtpScreen} />
-            </>
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+    <NavigationContainer>
+      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+    </NavigationContainer>
+  );
+};
+
+const App = () => {
+  return (
+    <Provider store={store}>
+      <AppContent />
     </Provider>
   );
 };

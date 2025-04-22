@@ -45,11 +45,33 @@ const LoginScreen = () => {
 
   const handleLogin = async () => {
     try {
-      console.log("logging in")
-      const res = await dispatch(loginUser({ email, password })).unwrap()
-    } catch (err) {
-      setErrorMessage(err.message);
-      setModalVisible(true);
+      console.log("logging in .....")
+      await dispatch(loginUser({ email, password })).unwrap();
+      navigation.navigate('Home')
+      // Navigation will be handled automatically by App.jsx based on auth state
+    } catch (error) {
+      // Check if the error is due to unverified user
+      if (error.message === "User is not verified. Verify your email first.") {
+        // Navigate to OTP screen for verification
+        navigation.navigate('Otp', { 
+          email: email,
+          fromScreen: 'login'
+        });
+      }
+      else if (error.message === "User not found") {
+        setEmail('')
+        setPassword('')
+        setErrorMessage('User not found');
+        setModalVisible(true);
+        setTimeout(() => {
+          navigation.navigate('Signup')
+        }, 3000);
+      }
+      else {
+        // Handle other errors
+        setErrorMessage(error.message || 'Login failed');
+        setModalVisible(true);
+      }
     }
   };
 

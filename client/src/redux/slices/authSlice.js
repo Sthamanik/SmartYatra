@@ -7,10 +7,16 @@ export const registerUser = createAsyncThunk(
     async( user, { rejectWithValue }) => {
         try{
             const response = await axiosInstance.post('users/register', user);
+            
+            // Store the registered user in encrypted storage
+            if (response.data.data) {
+                await EncryptedStorage.setItem('user', JSON.stringify(response.data.data));
+            }
 
-            return response.data;
+            return response.data.data;
 
         } catch ( err ){
+            console.log(err)
             return rejectWithValue(err.response?.data );
         }
     }
@@ -54,7 +60,6 @@ export const loginUser = createAsyncThunk(
             
             return { user, accessToken, refreshToken };
         } catch ( err ){
-            console.log(err)
             return rejectWithValue(err?.response?.data);
         }
     }
@@ -65,10 +70,11 @@ const initialState = {
     accessToken: null,
     refreshToken: null,
     loading: false,
-    error: null
+    error: null,
+    isAuthenticated: false
 }
 
-const authSLice = createSlice({
+const authSlice = createSlice({
     name: 'auth',
     initialState,
     reducers: {
@@ -77,6 +83,15 @@ const authSLice = createSlice({
             state.accessToken = null;
             state.refreshToken = null;
             state.loading = false;
+            state.error = null;
+            state.isAuthenticated = false;
+            
+            // Clear encrypted storage
+            EncryptedStorage.removeItem('accessToken');
+            EncryptedStorage.removeItem('refreshToken');
+            EncryptedStorage.removeItem('user');
+        },
+        clearError: (state) => {
             state.error = null;
         }
     },
@@ -89,9 +104,10 @@ const authSLice = createSlice({
         })
         .addCase(registerUser.fulfilled, (state, action) => {
             state.loading = false;
-            state.user = action.payload.user;
+            state.user = action.payload;
             state.accessToken = null;
             state.refreshToken = null;
+            state.isAuthenticated = false;
         })
         .addCase(registerUser.rejected, (state, action) => {
             state.loading = false;
@@ -103,18 +119,48 @@ const authSLice = createSlice({
             state.error = null;
         })
         .addCase(loginUser.fulfilled, (state, action) => {
-            console.log(action.payload)
             state.loading = false;
             state.user = action.payload.user;
             state.accessToken = action.payload.accessToken;
             state.refreshToken = action.payload.refreshToken;
+            state.isAuthenticated = true;
         })
         .addCase(loginUser.rejected, (state, action) => {
             state.loading = false;
             state.error = action.payload;
+            state.isAuthenticated = false;
         })
+        // verify OTP cases
+        .addCase(verifyOTP.pending, (state) => {
+            state.loading = true;
+            state.error = null;
+        })
+        .addCase(verifyOTP.fulfilled, (state, action) => {
+            state.loading = false;
+            state.error = null;
+            if (state.user) {
+                state.user.isVerified = true;
+            }
+        })
+        .addCase(verifyOTP.rejected, (state, action) => {
+            state.loading = false;
+            state.error = action.payload;
+        })
+        // resend OTP cases
+        .addCase(resendOTP.pending, (state) => {
+            state.loading = true;
+            state.error = null;
+        })
+        .addCase(resendOTP.fulfilled, (state) => {
+            state.loading = false;
+            state.error = null;
+        })
+        .addCase(resendOTP.rejected, (state, action) => {
+            state.loading = false;
+            state.error = action.payload;
+        });
     }
 })
 
-export const { logout } = authSLice.actions;
-export default authSLice.reducer;
+export const { logout, clearError } = authSlice.actions;
+export default authSlice.reducer;

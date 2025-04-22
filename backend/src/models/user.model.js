@@ -68,8 +68,7 @@ const UserSchema = new Schema({
     },
     otp: {
         code: { type: String, match: [/^\d{6}$/, "OTP must be a 6-digit number"], default: null },
-        expiredAt: { type: Date, default: null },
-        verified: { type: Boolean, default: false }
+        expiredAt: { type: Date, default: null }
     },
     otpAttempts: { type: Number, default: 0, min: 0, max: 5 }, // Failed OTP attempts for verification
     otpResendAttempts: { type: Number, default: 0, min:0, max:3 }, // Number of times OTP was resent
