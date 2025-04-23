@@ -1,61 +1,66 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, TextInput, Image } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/FontAwesome';
-
-// Helper function to generate a random point within a radius (in kilometers)
-const getRandomLocationWithinRadius = (latitude, longitude, radiusInKm) => {
-  const randomAngle = Math.random() * 2 * Math.PI;
-  const randomDistance = Math.random() * radiusInKm;
-  
-  // Earth radius in km
-  const earthRadiusKm = 6371;
-
-  const deltaLatitude = (randomDistance / earthRadiusKm) * (180 / Math.PI);
-  const deltaLongitude = (randomDistance / earthRadiusKm) * (180 / Math.PI) / Math.cos(latitude * Math.PI / 180);
-
-  const randomLatitude = latitude + deltaLatitude * Math.sin(randomAngle);
-  const randomLongitude = longitude + deltaLongitude * Math.cos(randomAngle);
-
-  return { latitude: randomLatitude, longitude: randomLongitude };
-};
+import axios from 'axios';
 
 const BookRideScreen = () => {
   const navigation = useNavigation();
-  const locations = useSelector((state) => state.location.locations);
-  const latestLocation = locations[0]; // get the latest location of the user
+  const locations = useSelector((state) => state.location?.locations || []);
+  const latestLocation = locations[0];
 
-  // Define buses with initial positions within the 5 km radius
-  const [buses, setBuses] = useState([
-    { id: 1, latitude: latestLocation.latitude, longitude: latestLocation.longitude },
-    { id: 2, latitude: latestLocation.latitude, longitude: latestLocation.longitude },
-    { id: 3, latitude: latestLocation.latitude, longitude: latestLocation.longitude },
-    { id: 4, latitude: latestLocation.latitude, longitude: latestLocation.longitude },
-    { id: 5, latitude: latestLocation.latitude, longitude: latestLocation.longitude },
-  ]);
+  const [startLocation, setStartLocation] = useState('');
+  const [endLocation, setEndLocation] = useState('');
+  const [pickupCoords, setPickupCoords] = useState(null);
+  const [destinationCoords, setDestinationCoords] = useState(null);
+  const [busStops, setBusStops] = useState([]);
 
-  const radiusInKm = 5; // Radius for bus movement
-
-  // Function to simulate smooth bus movement within the 5 km radius
-  const moveBuses = () => {
-    setBuses((prevBuses) =>
-      prevBuses.map((bus) => {
-        // Get a new random location within 5 km radius of the user's current location
-        const newLocation = getRandomLocationWithinRadius(latestLocation.latitude, latestLocation.longitude, radiusInKm);
-        return { ...bus, latitude: newLocation.latitude, longitude: newLocation.longitude };
-      })
-    );
+  // Reverse geocode to get address from lat/lng
+  const reverseGeocode = async (lat, lon, setter) => {
+    try {
+      const res = await axios.get(`https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lon}&key=YOUR_OPENCAGE_API_KEY`);
+      const address = res.data?.results?.[0]?.formatted;
+      if (address) setter(address);
+    } catch (err) {
+      console.error('Reverse geocoding failed', err);
+    }
   };
 
-  // Start moving buses every second
   useEffect(() => {
-    const intervalId = setInterval(moveBuses, 1000); // Move buses every 1 second
-    return () => clearInterval(intervalId); // Cleanup interval on component unmount
+    if (!latestLocation?.latitude || !latestLocation?.longitude) return;
+
+    // Fetch nearby bus stops
+    const getBusStops = async () => {
+      const url = `https://nominatim.openstreetmap.org/search.php?q=bus+stop&format=jsonv2&limit=5&lat=${latestLocation.latitude}&lon=${latestLocation.longitude}`;
+      const { data } = await axios.get(url);
+      setBusStops(data);
+    };
+
+    // Set default pickup location to current location
+    setPickupCoords({
+      latitude: latestLocation.latitude,
+      longitude: latestLocation.longitude,
+    });
+
+    getBusStops();
   }, [latestLocation]);
 
-  if (!latestLocation) {
+  // When pickup or destination marker is moved, update the corresponding state
+  const onMarkerDragEnd = (e, type) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+
+    if (type === 'pickup') {
+      setPickupCoords({ latitude, longitude });
+      reverseGeocode(latitude, longitude, setStartLocation);
+    } else if (type === 'destination') {
+      setDestinationCoords({ latitude, longitude });
+      reverseGeocode(latitude, longitude, setEndLocation);
+    }
+  };
+
+  if (!latestLocation?.latitude || !latestLocation?.longitude) {
     return (
       <View className="flex-1 items-center justify-center">
         <Text className="text-lg text-gray-500">Location not available</Text>
@@ -66,12 +71,12 @@ const BookRideScreen = () => {
   return (
     <View className="flex-1 bg-white">
       {/* Top Bar */}
-      <SafeAreaView className="z-10 absolute top-0 left-0 right-0 bg-white/90 p-4 flex-row justify-between items-center">
+      <SafeAreaView className="absolute top-0 left-0 right-0 z-10 bg-white/90 p-4 flex-row justify-between items-center">
         <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={28} color="#4F46E5" />
+          <Icon name="arrow-left" size={24} color="#4F46E5" />
         </TouchableOpacity>
         <Text className="text-xl font-bold text-indigo-600">Book a Ride</Text>
-        <View style={{ width: 28 }} /> {/* Spacer to balance the back icon */}
+        <View style={{ width: 24 }} />
       </SafeAreaView>
 
       {/* Map View */}
@@ -83,30 +88,95 @@ const BookRideScreen = () => {
           latitudeDelta: 0.01,
           longitudeDelta: 0.01,
         }}
-        showsUserLocation={true}
-        showsMyLocationButton={true}
+        showsUserLocation
+        showsMyLocationButton
       >
-        {/* User's current location */}
-        <Marker coordinate={{ latitude: latestLocation.latitude, longitude: latestLocation.longitude }} title="You" />
+        {/* User's Current Location Marker */}
+        <Marker
+          coordinate={{
+            latitude: latestLocation.latitude,
+            longitude: latestLocation.longitude,
+          }}
+          title="You"
+          pinColor="red"
+        />
 
-        {/* Moving Buses */}
-        {buses.map((bus) => (
+        {/* Pickup Marker */}
+        {pickupCoords && (
           <Marker
-            key={bus.id}
+            coordinate={pickupCoords}
+            title="Pickup"
+            draggable
+            pinColor="indigo"
+            onDragEnd={(e) => onMarkerDragEnd(e, 'pickup')}
+          />
+        )}
+
+        {/* Destination Marker */}
+        {destinationCoords && (
+          <Marker
+            coordinate={destinationCoords}
+            title="Destination"
+            draggable
+            pinColor="indigo"
+            onDragEnd={(e) => onMarkerDragEnd(e, 'destination')}
+          />
+        )}
+
+        {/* Bus Stops */}
+        {busStops.map((stop, index) => (
+          <Marker
+            key={index}
             coordinate={{
-              latitude: bus.latitude,
-              longitude: bus.longitude,
+              latitude: parseFloat(stop.lat),
+              longitude: parseFloat(stop.lon),
             }}
-            title={`Bus ${bus.id}`}
-            description={`Bus ${bus.id} is moving!`}
+            title="Bus Stop"
+            description={stop.display_name}
           >
             <Image
-              source={require('../assets/bus-icon.png')} // Add your bus image here
+              source={require('../assets/bus-icon.png')}
               style={{ width: 30, height: 30 }}
+              resizeMode="contain"
             />
           </Marker>
         ))}
       </MapView>
+
+      {/* Bottom Input Section */}
+      <View className="absolute bottom-0 left-0 right-0 bg-white px-5 py-4 rounded-t-3xl shadow-lg border-t border-gray-200">
+        <Text className="text-lg font-semibold text-gray-800 mb-3">Plan Your Ride</Text>
+
+        {/* Start Location */}
+        <View className="flex-row items-center mb-3">
+          <Icon name="circle" size={12} color="#4F46E5" style={{ marginRight: 10 }} />
+          <View className="flex-1 border-b border-gray-300 pb-1">
+            <Text className="text-xs text-gray-400">Start Location</Text>
+            <TextInput
+              placeholder="Enter pickup point"
+              placeholderTextColor="#A0AEC0"
+              value={startLocation}
+              onChangeText={setStartLocation}
+              className="text-base text-gray-700"
+            />
+          </View>
+        </View>
+
+        {/* End Location */}
+        <View className="flex-row items-center">
+          <Icon name="map-marker" size={16} color="#DC2626" style={{ marginRight: 10 }} />
+          <View className="flex-1 border-b border-gray-300 pb-1">
+            <Text className="text-xs text-gray-400">Destination</Text>
+            <TextInput
+              placeholder="Enter drop-off point"
+              placeholderTextColor="#A0AEC0"
+              value={endLocation}
+              onChangeText={setEndLocation}
+              className="text-base text-gray-700"
+            />
+          </View>
+        </View>
+      </View>
     </View>
   );
 };

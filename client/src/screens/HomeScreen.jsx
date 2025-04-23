@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, PermissionsAndroid, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  Image,
+  PermissionsAndroid,
+  RefreshControl,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useDispatch, useSelector } from 'react-redux';
 import Geolocation from '@react-native-community/geolocation';
-import axios from 'axios'; // Import axios for API calls
 import { addLocation, setLocationPermission } from '../redux/slices/locationSlice';
-import { OPENCAGE_API_KEY } from 'react-native-dotenv'; // Import OpenCage API key
+import { fetchAddress } from '../redux/slices/reverseGeocodeSlice'; // ✅ Fixed import
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -15,10 +22,9 @@ const HomeScreen = () => {
   const [location, setLocation] = useState(null);
   const [locationError, setLocationError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [address, setAddress] = useState(null); // Store the address
 
   const user = useSelector((state) => state.auth.user);
-  const locations = useSelector((state) => state.location.locations);
+  const address = useSelector((state) => state.reverseGeocode.address);
 
   const requestLocationPermission = async () => {
     try {
@@ -40,8 +46,7 @@ const HomeScreen = () => {
   const getCurrentLocation = () => {
     setLocation(null);
     setLocationError(null);
-    setAddress(null); // Reset address before fetching new location
-  
+
     Geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
@@ -52,10 +57,7 @@ const HomeScreen = () => {
         };
         setLocation(`Lat: ${latitude.toFixed(5)}, Lon: ${longitude.toFixed(5)}`);
         dispatch(addLocation(newLocation));
-        
-        // Now fetch the address using reverse geocoding
-        getAddressFromCoordinates(latitude, longitude);
-
+        dispatch(fetchAddress({ latitude, longitude })); // ✅ Fixed dispatch
         setRefreshing(false);
         console.log('✅ Location fetched:', newLocation);
       },
@@ -72,37 +74,6 @@ const HomeScreen = () => {
         forceRequestLocation: true,
       }
     );
-  };
-
-  // Reverse Geocoding to get address from Lat, Lon
-  const getAddressFromCoordinates = async (latitude, longitude) => {
-    try {
-      // Use OpenCage Geocoding API
-      const response = await axios.get(
-        `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${OPENCAGE_API_KEY}`
-      );
-      
-      // Check if response status is OK
-      if (response.data.status.code === 200) {
-        const components = response.data.results[0]?.components;
-      
-        // Try to get the city (or another relevant location part)
-        const city = components?.city || components?.town || components?.village;
-        const neighbourhood = components?.neighbourhood;
-        const formattedAddress = response.data.results[0]?.formatted;
-        console.log(formattedAddress)
-
-        // Combine city and country for a more meaningful address
-        const fullAddress = city ? `${city}, ${neighbourhood}` : formattedAddress;
-
-        setAddress(fullAddress);
-        console.log('Address fetched:', fullAddress);
-      } else {
-        console.log('Failed to fetch address:', response.data.status.message);
-      }
-    } catch (error) {
-      console.error('Reverse Geocoding error:', error);
-    }
   };
 
   const onRefresh = () => {
@@ -149,16 +120,13 @@ const HomeScreen = () => {
         <Text className="text-gray-500">Current Location</Text>
         {location ? (
           <Text className="text-lg font-medium text-indigo-600">
-            {address && (
-              <Text>{address}</Text>
-            )}
+            {address || 'Fetching address...'}
           </Text>
         ) : (
           <Text className="text-lg font-medium text-red-500">
             {locationError || 'Fetching location...'}
           </Text>
         )}
-        
       </View>
 
       {/* Quick Access Cards */}
